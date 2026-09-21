@@ -1,0 +1,6 @@
+{
+  "name": "Lịch Âm Nổi",
+  "description": "Ứng dụng hiển thị ngày và tháng Âm lịch hiện tại dạng cửa sổ nổi tự do di chuyển đè lên các ứng dụng khác với chữ màu đỏ.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
