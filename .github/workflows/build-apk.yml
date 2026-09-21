@@ -31,8 +31,8 @@ jobs:
           if [ -f "debug.keystore.base64" ] && [ ! -f "debug.keystore" ]; then
             base64 -d debug.keystore.base64 > debug.keystore
           fi
-          touch .env
-          cp .env.example .env 2>/dev/null || true
+          echo "GEMINI_API_KEY=" > .env
+          echo "GEMINI_API_KEY=" > .env.example
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
@@ -48,7 +48,7 @@ jobs:
 
       - name: Build APK with Gradle
         run: |
-          ./gradlew :app:assembleDebug -x test -x lint --no-configuration-cache --no-daemon --stacktrace
+          ./gradlew :app:assembleDebug -x test -x lint --no-configuration-cache --no-daemon --stacktrace --warning-mode all
 
       - name: Upload APK to Artifacts
         uses: actions/upload-artifact@v4
