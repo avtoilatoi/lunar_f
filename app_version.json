@@ -2,7 +2,7 @@
   "versionCode": 3,
   "versionName": "1.2",
   "changelog": "• Nâng cấp phiên bản mới v1.2\n• Tối ưu hiệu năng hiển thị và độ mượt khi vuốt màn hình\n• Hệ thống cập nhật OTA tự động thông minh qua GitHub Releases\n• Khắc phục hoàn toàn lỗi phân giải và build trên hệ thống máy ảo\n• Tương thích hoàn hảo với mọi đầu DVD / màn hình Android ô tô",
-  "downloadUrl": "https://github.com/nhut07c1/lunar_f/releases/download/v1.2/app-debug.apk",
+  "downloadUrl": "https://github.com/avtoilatoi/lunar_f/releases/download/v1.2/app-debug.apk",
   "fileSize": "14.6 MB",
   "isForced": false
 }

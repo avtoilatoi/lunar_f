@@ -20,7 +20,7 @@ import java.util.zip.ZipInputStream
 
 object AppUpdateManager {
 
-    const val DEFAULT_UPDATE_CONFIG_URL = "https://raw.githubusercontent.com/nhut07c1/lunar_f/main/app_version.json"
+    const val DEFAULT_UPDATE_CONFIG_URL = "https://raw.githubusercontent.com/avtoilatoi/lunar_f/main/app_version.json"
 
     fun getCurrentVersionCode(context: Context): Int {
         return try {
@@ -82,84 +82,127 @@ object AppUpdateManager {
     }
 
     suspend fun checkForUpdate(context: Context, customUrl: String? = null): Result<UpdateInfo?> = withContext(Dispatchers.IO) {
-        val targetUrl = resolveUpdateEndpoint(customUrl)
+        val primaryUrl = resolveUpdateEndpoint(customUrl)
         val currentCode = getCurrentVersionCode(context)
 
-        try {
-            val url = URL(targetUrl)
-            val connection = (url.openConnection() as HttpURLConnection).apply {
-                connectTimeout = 8000
-                readTimeout = 8000
-                requestMethod = "GET"
-                setRequestProperty("User-Agent", "LichAmNoi-Android/${getCurrentVersionName(context)}")
-                setRequestProperty("Accept", "application/json")
+        // Build list of fallback candidate URLs to try automatically
+        val candidateUrls = mutableListOf<String>()
+        candidateUrls.add(primaryUrl)
+        
+        // If it's a raw github URL, also try master branch and releases API
+        if (primaryUrl.contains("raw.githubusercontent.com")) {
+            if (primaryUrl.contains("/main/")) {
+                candidateUrls.add(primaryUrl.replace("/main/", "/master/"))
             }
-
-            val responseCode = connection.responseCode
-            if (responseCode !in 200..299) {
-                return@withContext Result.failure(Exception("Máy chủ cập nhật phản hồi mã lỗi: $responseCode"))
+            val clean = primaryUrl.replace("https://raw.githubusercontent.com/", "")
+            val parts = clean.split("/")
+            if (parts.size >= 2) {
+                candidateUrls.add("https://api.github.com/repos/${parts[0]}/${parts[1]}/releases/latest")
             }
+        }
 
-            val responseBody = connection.inputStream.bufferedReader().use { it.readText() }
-            connection.disconnect()
+        var lastError: Exception? = null
 
-            val json = JSONObject(responseBody)
-            
-            // Support both standard custom JSON and GitHub Releases JSON format
-            val latestCode = if (json.has("versionCode")) {
-                json.getInt("versionCode")
-            } else if (json.has("latestVersionCode")) {
-                json.getInt("latestVersionCode")
-            } else {
-                // Fallback: extract version number from tag or name
-                val tag = json.optString("tag_name", "").replace("v", "").replace(".", "")
-                tag.toIntOrNull() ?: (currentCode + 1)
-            }
+        for (targetUrl in candidateUrls) {
+            try {
+                val url = URL(targetUrl)
+                val connection = (url.openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 8000
+                    readTimeout = 8000
+                    requestMethod = "GET"
+                    setRequestProperty("User-Agent", "LichAmNoi-Android/${getCurrentVersionName(context)}")
+                    setRequestProperty("Accept", "application/json")
+                }
 
-            val latestName = json.optString("versionName", 
-                json.optString("latestVersionName", json.optString("tag_name", "1.1.0"))
-            )
+                val responseCode = connection.responseCode
+                if (responseCode !in 200..299) {
+                    connection.disconnect()
+                    lastError = Exception("Máy chủ cập nhật phản hồi mã lỗi: $responseCode ($targetUrl)")
+                    continue
+                }
 
-            val changelog = json.optString("changelog", 
-                json.optString("description", json.optString("body", "• Tối ưu khởi động siêu tốc khi mở máy\n• Cải thiện hiển thị đa nhiệm 2-PIP"))
-            )
+                val responseBody = connection.inputStream.bufferedReader().use { it.readText() }
+                connection.disconnect()
 
-            var downloadUrl = json.optString("downloadUrl", json.optString("apkUrl", ""))
-            
-            // If GitHub release, look into assets for .apk file
-            if (downloadUrl.isEmpty() && json.has("assets")) {
-                val assets = json.getJSONArray("assets")
-                for (i in 0 until assets.length()) {
-                    val asset = assets.getJSONObject(i)
-                    val name = asset.optString("name", "")
-                    if (name.endsWith(".apk", ignoreCase = true)) {
-                        downloadUrl = asset.optString("browser_download_url", "")
-                        break
+                val json = JSONObject(responseBody)
+                
+                // Support both standard custom JSON and GitHub Releases JSON format
+                val latestCode = if (json.has("versionCode")) {
+                    json.getInt("versionCode")
+                } else if (json.has("latestVersionCode")) {
+                    json.getInt("latestVersionCode")
+                } else {
+                    // Fallback: extract version number from tag or name (e.g., v1.2 -> 3)
+                    val tag = json.optString("tag_name", "").replace("v", "").replace(".", "").trim()
+                    tag.toIntOrNull() ?: (currentCode + 1)
+                }
+
+                val latestName = json.optString("versionName", 
+                    json.optString("latestVersionName", json.optString("tag_name", "1.2"))
+                )
+
+                val changelog = json.optString("changelog", 
+                    json.optString("description", json.optString("body", "• Nâng cấp phiên bản mới v1.2\n• Tối ưu khởi động siêu tốc khi mở máy\n• Cải thiện hiển thị đa nhiệm 2-PIP"))
+                )
+
+                var downloadUrl = json.optString("downloadUrl", json.optString("apkUrl", ""))
+                
+                // If GitHub release, look into assets for .apk file
+                if (downloadUrl.isEmpty() && json.has("assets")) {
+                    val assets = json.getJSONArray("assets")
+                    for (i in 0 until assets.length()) {
+                        val asset = assets.getJSONObject(i)
+                        val name = asset.optString("name", "")
+                        if (name.endsWith(".apk", ignoreCase = true)) {
+                            downloadUrl = asset.optString("browser_download_url", "")
+                            break
+                        }
                     }
                 }
-            }
 
-            val releaseDate = json.optString("releaseDate", json.optString("published_at", ""))
-            val isForced = json.optBoolean("isForced", false)
-            val fileSizeFormatted = json.optString("fileSize", "15 MB")
+                val releaseDate = json.optString("releaseDate", json.optString("published_at", ""))
+                val isForced = json.optBoolean("isForced", false)
 
-            if (latestCode > currentCode) {
-                val info = UpdateInfo(
-                    latestVersionCode = latestCode,
-                    latestVersionName = latestName,
-                    changelog = changelog,
-                    downloadUrl = downloadUrl,
-                    releaseDate = releaseDate,
-                    isForced = isForced,
-                    fileSizeFormatted = fileSizeFormatted
-                )
-                Result.success(info)
-            } else {
-                Result.success(null)
+                var fileSizeFormatted = json.optString("fileSize", "")
+                if (fileSizeFormatted.isEmpty() && json.has("assets")) {
+                    val assets = json.getJSONArray("assets")
+                    for (i in 0 until assets.length()) {
+                        val asset = assets.getJSONObject(i)
+                        val name = asset.optString("name", "")
+                        if (name.endsWith(".apk", ignoreCase = true)) {
+                            val bytes = asset.optLong("size", 0L)
+                            if (bytes > 0) {
+                                val mb = bytes.toDouble() / (1024 * 1024)
+                                fileSizeFormatted = String.format("%.1f MB", mb)
+                            }
+                            break
+                        }
+                    }
+                }
+                if (fileSizeFormatted.isEmpty()) {
+                    fileSizeFormatted = "14.6 MB"
+                }
+
+                if (latestCode > currentCode) {
+                    val info = UpdateInfo(
+                        latestVersionCode = latestCode,
+                        latestVersionName = latestName,
+                        changelog = changelog,
+                        downloadUrl = downloadUrl,
+                        releaseDate = releaseDate,
+                        isForced = isForced,
+                        fileSizeFormatted = fileSizeFormatted
+                    )
+                    return@withContext Result.success(info)
+                } else {
+                    return@withContext Result.success(null)
+                }
+            } catch (e: Exception) {
+                lastError = e
             }
-        } catch (e: Exception) {
-            Result.failure(e)
         }
+
+        return@withContext Result.failure(lastError ?: Exception("Không thể kết nối máy chủ cập nhật"))
     }
 
     suspend fun downloadApk(
@@ -167,77 +210,145 @@ object AppUpdateManager {
         downloadUrl: String,
         onProgress: (progress: Float, downloadedBytes: Long, totalBytes: Long) -> Unit
     ): Result<File> = withContext(Dispatchers.IO) {
-        try {
-            var currentUrl = downloadUrl
-            var connection: HttpURLConnection
-            var redirects = 0
+        val candidateUrls = mutableListOf<String>()
+        val primary = downloadUrl.trim().replace("nhut07c1", "avtoilatoi")
+        candidateUrls.add(primary)
 
-            // Handle HTTP 301/302/307 redirects (common on GitHub Releases)
-            while (true) {
-                val url = URL(currentUrl)
-                connection = (url.openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 15000
-                    readTimeout = 30000
-                    instanceFollowRedirects = false
-                    setRequestProperty("User-Agent", "LichAmNoi-Android/${getCurrentVersionName(context)}")
-                }
-
-                val status = connection.responseCode
-                if (status == HttpURLConnection.HTTP_MOVED_TEMP || 
-                    status == HttpURLConnection.HTTP_MOVED_PERM || 
-                    status == HttpURLConnection.HTTP_SEE_OTHER ||
-                    status == 307) {
-                    val newUrl = connection.getHeaderField("Location")
-                    connection.disconnect()
-                    if (newUrl != null && redirects < 5) {
-                        currentUrl = newUrl
-                        redirects++
-                        continue
-                    }
-                }
-                break
+        // If it's a release download URL, add alternative filenames
+        if (primary.contains("/releases/download/")) {
+            val baseRelease = primary.substringBeforeLast("/")
+            if (!primary.endsWith("/app-debug.apk")) {
+                candidateUrls.add("$baseRelease/app-debug.apk")
             }
-
-            val totalBytes = connection.contentLength.toLong()
-            val updatesDir = File(context.cacheDir, "updates").apply { mkdirs() }
-            val apkFile = File(updatesDir, "LichAmNoi_update.apk")
-            if (apkFile.exists()) {
-                apkFile.delete()
+            if (!primary.endsWith("/LichAmNoi-v1.2.apk")) {
+                candidateUrls.add("$baseRelease/LichAmNoi-v1.2.apk")
             }
-
-            connection.inputStream.use { input ->
-                FileOutputStream(apkFile).use { output ->
-                    val buffer = ByteArray(8 * 1024)
-                    var bytesRead: Int
-                    var totalDownloaded = 0L
-
-                    while (input.read(buffer).also { bytesRead = it } != -1) {
-                        output.write(buffer, 0, bytesRead)
-                        totalDownloaded += bytesRead
-
-                        val progress = if (totalBytes > 0) {
-                            (totalDownloaded.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
-                        } else {
-                            0.5f
-                        }
-                        onProgress(progress, totalDownloaded, totalBytes)
-                    }
-                    output.flush()
-                }
-            }
-            connection.disconnect()
-
-            // Check if downloaded file is a ZIP (such as GitHub Artifacts)
-            val finalApkFile = if (isZipFile(apkFile)) {
-                extractApkFromZip(apkFile, updatesDir) ?: apkFile
-            } else {
-                apkFile
-            }
-
-            Result.success(finalApkFile)
-        } catch (e: Exception) {
-            Result.failure(e)
         }
+
+        // Try to query GitHub Release API for any APK asset as last resort fallback
+        try {
+            val apiUrl = URL("https://api.github.com/repos/avtoilatoi/lunar_f/releases/latest")
+            val apiConn = (apiUrl.openConnection() as HttpURLConnection).apply {
+                connectTimeout = 5000
+                readTimeout = 5000
+                requestMethod = "GET"
+                setRequestProperty("Accept", "application/json")
+                setRequestProperty("User-Agent", "LichAmNoi-Android")
+            }
+            if (apiConn.responseCode in 200..299) {
+                val apiBody = apiConn.inputStream.bufferedReader().use { it.readText() }
+                val apiJson = JSONObject(apiBody)
+                val assets = apiJson.optJSONArray("assets")
+                if (assets != null) {
+                    for (i in 0 until assets.length()) {
+                        val asset = assets.getJSONObject(i)
+                        val name = asset.optString("name", "")
+                        if (name.endsWith(".apk", ignoreCase = true)) {
+                            val assetUrl = asset.optString("browser_download_url", "")
+                            if (assetUrl.isNotEmpty() && !candidateUrls.contains(assetUrl)) {
+                                candidateUrls.add(assetUrl)
+                            }
+                        }
+                    }
+                }
+            }
+            apiConn.disconnect()
+        } catch (_: Exception) {
+            // Ignore API probe failure
+        }
+
+        var lastError: Exception? = null
+        val updatesDir = File(context.cacheDir, "updates").apply { mkdirs() }
+        val apkFile = File(updatesDir, "LichAmNoi_update.apk")
+
+        for (tryUrl in candidateUrls) {
+            try {
+                var currentUrl = tryUrl
+                var connection: HttpURLConnection? = null
+                var redirects = 0
+
+                // Handle HTTP 301/302/303/307/308 redirects (GitHub Releases redirect to AWS S3)
+                while (true) {
+                    val url = URL(currentUrl)
+                    val conn = (url.openConnection() as HttpURLConnection).apply {
+                        connectTimeout = 15000
+                        readTimeout = 30000
+                        instanceFollowRedirects = false
+                        setRequestProperty("User-Agent", "LichAmNoi-Android/${getCurrentVersionName(context)}")
+                    }
+                    connection = conn
+
+                    val status = conn.responseCode
+                    if (status == HttpURLConnection.HTTP_MOVED_TEMP || 
+                        status == HttpURLConnection.HTTP_MOVED_PERM || 
+                        status == HttpURLConnection.HTTP_SEE_OTHER ||
+                        status == 307 ||
+                        status == 308) {
+                        val newUrl = conn.getHeaderField("Location")
+                        conn.disconnect()
+                        if (newUrl != null && redirects < 5) {
+                            currentUrl = newUrl
+                            redirects++
+                            continue
+                        }
+                    }
+                    break
+                }
+
+                val conn = connection ?: continue
+                val responseCode = conn.responseCode
+                if (responseCode !in 200..299) {
+                    conn.disconnect()
+                    val msg = if (responseCode == 404) {
+                        "Mã lỗi 404: Chưa tìm thấy file APK trên GitHub Release v1.2 ($tryUrl)"
+                    } else {
+                        "Máy chủ phản hồi mã lỗi HTTP $responseCode ($tryUrl)"
+                    }
+                    lastError = Exception(msg)
+                    continue
+                }
+
+                val totalBytes = conn.contentLength.toLong()
+                if (apkFile.exists()) {
+                    apkFile.delete()
+                }
+
+                conn.inputStream.use { input ->
+                    FileOutputStream(apkFile).use { output ->
+                        val buffer = ByteArray(8 * 1024)
+                        var bytesRead: Int
+                        var totalDownloaded = 0L
+
+                        while (input.read(buffer).also { bytesRead = it } != -1) {
+                            output.write(buffer, 0, bytesRead)
+                            totalDownloaded += bytesRead
+
+                            val progress = if (totalBytes > 0) {
+                                (totalDownloaded.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
+                            } else {
+                                0.5f
+                            }
+                            onProgress(progress, totalDownloaded, totalBytes)
+                        }
+                        output.flush()
+                    }
+                }
+                conn.disconnect()
+
+                // Check if downloaded file is a ZIP (such as GitHub Artifacts)
+                val finalApkFile = if (isZipFile(apkFile)) {
+                    extractApkFromZip(apkFile, updatesDir) ?: apkFile
+                } else {
+                    apkFile
+                }
+
+                return@withContext Result.success(finalApkFile)
+            } catch (e: Exception) {
+                lastError = e
+            }
+        }
+
+        Result.failure(lastError ?: Exception("Không thể tải file APK. Vui lòng kiểm tra kết nối mạng."))
     }
 
     private fun isZipFile(file: File): Boolean {

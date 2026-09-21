@@ -1,5 +1,7 @@
 package com.example.ui
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -17,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -572,6 +575,7 @@ fun AppUpdateDialog(
 
         is UpdateState.Error -> {
             val message = updateState.message
+            val context = LocalContext.current
             AlertDialog(
                 onDismissRequest = onDismiss,
                 icon = {
@@ -591,6 +595,18 @@ fun AppUpdateDialog(
                 confirmButton = {
                     TextButton(onClick = onDismiss) {
                         Text("Đóng")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        onDismiss()
+                        try {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/avtoilatoi/lunar_f/releases"))
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            context.startActivity(intent)
+                        } catch (_: Exception) {}
+                    }) {
+                        Text("Mở GitHub")
                     }
                 },
                 shape = RoundedCornerShape(20.dp)
