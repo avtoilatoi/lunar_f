@@ -31,12 +31,16 @@ jobs:
         with:
           cache-disabled: true
 
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Restore debug keystore and setup gradlew
         run: |
           if [ -f "debug.keystore.base64" ] && [ ! -f "debug.keystore" ]; then
             base64 -d debug.keystore.base64 > debug.keystore
           fi
           touch .env
+          echo "yes" | sdkmanager --licenses || true
           if [ ! -f "gradlew" ]; then
             gradle wrapper --gradle-version 8.11.1
           fi
@@ -44,11 +48,7 @@ jobs:
 
       - name: Build APK with Gradle
         run: |
-          if [ -f "./gradlew" ]; then
-            ./gradlew :app:assembleDebug -x test -x lint --no-daemon --stacktrace
-          else
-            gradle :app:assembleDebug -x test -x lint --no-daemon --stacktrace
-          fi
+          ./gradlew :app:assembleDebug -x test -x lint --no-configuration-cache --no-daemon --stacktrace --info
 
       - name: Upload APK to Artifacts
         uses: actions/upload-artifact@v4
