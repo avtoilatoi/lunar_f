@@ -18,7 +18,7 @@ import java.net.URL
 
 object AppUpdateManager {
 
-    const val DEFAULT_UPDATE_CONFIG_URL = "https://raw.githubusercontent.com/nhut07c1/lich-am-noi/main/app_version.json"
+    const val DEFAULT_UPDATE_CONFIG_URL = "https://raw.githubusercontent.com/nhut07c1/lunar_f/main/app_version.json"
 
     fun getCurrentVersionCode(context: Context): Int {
         return try {
@@ -53,8 +53,34 @@ object AppUpdateManager {
         }
     }
 
+    fun resolveUpdateEndpoint(inputUrl: String?): String {
+        val trimmed = inputUrl?.trim()
+        if (trimmed.isNullOrEmpty()) {
+            return DEFAULT_UPDATE_CONFIG_URL
+        }
+        // If user provided a github repo URL e.g. https://github.com/nhut07c1/lunar_f or /releases
+        if (trimmed.contains("github.com") && !trimmed.contains("raw.githubusercontent.com") && !trimmed.contains("api.github.com")) {
+            val clean = trimmed.removeSuffix("/").removeSuffix(".git")
+            val parts = clean.split("github.com/")
+            if (parts.size == 2) {
+                val repoPath = parts[1].split("/")
+                if (repoPath.size >= 2) {
+                    val owner = repoPath[0]
+                    val repo = repoPath[1]
+                    // If points to releases directly, use GitHub API
+                    if (clean.contains("/releases")) {
+                        return "https://api.github.com/repos/$owner/$repo/releases/latest"
+                    }
+                    // Default to app_version.json in main branch
+                    return "https://raw.githubusercontent.com/$owner/$repo/main/app_version.json"
+                }
+            }
+        }
+        return trimmed
+    }
+
     suspend fun checkForUpdate(context: Context, customUrl: String? = null): Result<UpdateInfo?> = withContext(Dispatchers.IO) {
-        val targetUrl = if (!customUrl.isNullOrBlank()) customUrl.trim() else DEFAULT_UPDATE_CONFIG_URL
+        val targetUrl = resolveUpdateEndpoint(customUrl)
         val currentCode = getCurrentVersionCode(context)
 
         try {
