@@ -12,9 +12,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.zip.ZipInputStream
 
 object AppUpdateManager {
 
@@ -225,9 +227,60 @@ object AppUpdateManager {
             }
             connection.disconnect()
 
-            Result.success(apkFile)
+            // Check if downloaded file is a ZIP (such as GitHub Artifacts)
+            val finalApkFile = if (isZipFile(apkFile)) {
+                extractApkFromZip(apkFile, updatesDir) ?: apkFile
+            } else {
+                apkFile
+            }
+
+            Result.success(finalApkFile)
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    private fun isZipFile(file: File): Boolean {
+        return try {
+            FileInputStream(file).use { input ->
+                val header = ByteArray(4)
+                if (input.read(header) == 4) {
+                    // ZIP magic number: 0x50 0x4B 0x03 0x04 or 0x50 0x4B 0x05 0x06
+                    header[0] == 0x50.toByte() && header[1] == 0x4B.toByte()
+                } else false
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun extractApkFromZip(zipFile: File, outputDir: File): File? {
+        return try {
+            var extractedApk: File? = null
+            ZipInputStream(FileInputStream(zipFile)).use { zis ->
+                var entry = zis.nextEntry
+                while (entry != null) {
+                    if (!entry.isDirectory && entry.name.endsWith(".apk", ignoreCase = true)) {
+                        val outFile = File(outputDir, "extracted_app.apk")
+                        if (outFile.exists()) outFile.delete()
+                        FileOutputStream(outFile).use { fos ->
+                            val buffer = ByteArray(8 * 1024)
+                            var len: Int
+                            while (zis.read(buffer).also { len = it } > 0) {
+                                fos.write(buffer, 0, len)
+                            }
+                            fos.flush()
+                        }
+                        extractedApk = outFile
+                        break
+                    }
+                    zis.closeEntry()
+                    entry = zis.nextEntry
+                }
+            }
+            extractedApk
+        } catch (e: Exception) {
+            null
         }
     }
 
