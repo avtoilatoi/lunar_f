@@ -51,9 +51,11 @@ jobs:
           ./gradlew :app:assembleDebug -x test -x lint --no-configuration-cache --no-daemon --stacktrace > build.log 2>&1
           GRADLE_EXIT_CODE=$?
           if [ $GRADLE_EXIT_CODE -ne 0 ]; then
-            echo "====================== BUILD FAILED: LOG OUTPUT ======================"
-            tail -n 100 build.log
-            echo "======================================================================"
+            echo "====================== BUILD FAILED: TASK & ERROR ======================"
+            grep -E "(> Task :|FAILURE:|What went wrong:|Caused by:)" build.log | tail -n 25
+            echo "------------------- DETAILS -------------------"
+            grep -A 10 "What went wrong:" build.log || tail -n 40 build.log
+            echo "========================================================================="
             exit $GRADLE_EXIT_CODE
           fi
 
