@@ -1,8 +1,8 @@
 {
-  "versionCode": 3,
-  "versionName": "1.2",
-  "changelog": "• Nâng cấp phiên bản mới v1.2\n• Tối ưu hiệu năng hiển thị và độ mượt khi vuốt màn hình\n• Hệ thống cập nhật OTA tự động thông minh qua GitHub Releases\n• Khắc phục hoàn toàn lỗi phân giải và build trên hệ thống máy ảo\n• Tương thích hoàn hảo với mọi đầu DVD / màn hình Android ô tô",
-  "downloadUrl": "https://github.com/avtoilatoi/lunar_f/releases/download/v1.2/app-debug.apk",
+  "versionCode": 4,
+  "versionName": "1.3",
+  "changelog": "• Nâng cấp phiên bản mới v1.3 (Cập nhật OTA tự động thành công)\n• Tối ưu hóa phản hồi chạm và kiểm tra cập nhật nền siêu tốc\n• Cải thiện hiển thị lịch âm nổi mượt mà trên mọi tỷ lệ màn hình Android ô tô",
+  "downloadUrl": "https://github.com/avtoilatoi/lunar_f/releases/download/v1.3/app-debug.apk",
   "fileSize": "14.6 MB",
   "isForced": false
 }

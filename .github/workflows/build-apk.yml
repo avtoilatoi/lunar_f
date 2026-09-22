@@ -63,22 +63,22 @@ jobs:
             exit $GRADLE_EXIT_CODE
           fi
           # Ensure uniform filename for auto-download
-          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/LichAmNoi-v1.2.apk 2>/dev/null || true
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/LichAmNoi-v1.3.apk 2>/dev/null || true
 
       - name: Upload APK to Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: LichAmNoi-v1.2-APK
+          name: LichAmNoi-v1.3-APK
           path: app/build/outputs/apk/debug/*.apk
 
       - name: Create or Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.2
-          name: "Lịch Âm Nổi v1.2"
+          tag_name: v1.3
+          name: "Lịch Âm Nổi v1.3"
           files: |
             app/build/outputs/apk/debug/app-debug.apk
-            app/build/outputs/apk/debug/LichAmNoi-v1.2.apk
+            app/build/outputs/apk/debug/LichAmNoi-v1.3.apk
             app_version.json
           generate_release_notes: true
           draft: false
